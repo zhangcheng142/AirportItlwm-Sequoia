@@ -52,10 +52,17 @@ struct Owner {
     struct Loop { bool gated = true; bool inGate() { return gated; } } loop;
     bool available = true;
     SequoiaWCL::NativeJoin nativeJoin;
+    uint32_t configurationSetters = 0;
+    uint32_t lastConfigurationSetter = UINT32_MAX;
     Loop *getWorkQueue() { return &loop; }
     bool nativeRadioAvailable() { return available && loop.gated; }
     bool nativeHardwareQueryAvailable() { return available && loop.gated; }
     void publishNativeJoinDiagnostics() {}
+    void recordConfigurationSetter(uint32_t selector)
+    {
+        ++configurationSetters;
+        lastConfigurationSetter = selector;
+    }
 };
 struct AirportItlwmSkywalkInterface {
     Owner *instance = nullptr;
@@ -63,6 +70,7 @@ struct AirportItlwmSkywalkInterface {
     IOReturn getSequoiaBSSInfo(void *);
     IOReturn getSequoiaExtendedBSSInfo(void *);
     IOReturn setSequoiaFastLane(void *);
+    IOReturn setSequoiaArpMode(void *);
     IOReturn getSequoiaLowLatencyInfo(void *);
     IOReturn getSequoiaHardwareAddress(void *);
     uint8_t nativePermanentAddress[6] = {0x88,1,2,3,4,5};
@@ -254,6 +262,28 @@ int main()
         owner.available = false; assert(interface.setSequoiaFastLane(flags) == kIOReturnNotReady);
         assert(interface.setSequoiaFastLane(nullptr) == kIOReturnBadArgument);
     }
-    std::printf("Native extended-BSS: %u ownership/failure/bounds traces, negotiated rates/MCS/RSN, HE widths and Fastlane refusal tests passed; HAL mocked\n", extendedTraces);
+    // Slot 589 is BCM's ARP/GARP keepalive configuration. The Intel path
+    // validates the audited scalar fields and acknowledges the request without
+    // claiming an Intel firmware offload implementation.
+    for (unsigned mode = 0; mode < 2; ++mode) {
+        Owner owner; AirportItlwmSkywalkInterface interface{&owner, nullptr};
+        uint8_t payload[0x14] = {};
+        memcpy(payload + 8, &mode, sizeof(mode));
+        payload[4] = 1; payload[5] = 1;
+        assert(interface.setSequoiaArpMode(payload) == kIOReturnSuccess);
+        assert(owner.configurationSetters == 1 && owner.lastConfigurationSetter == 589);
+    }
+    {
+        Owner owner; AirportItlwmSkywalkInterface interface{&owner, nullptr};
+        uint8_t payload[0x14] = {};
+        uint32_t invalid = 2; memcpy(payload + 8, &invalid, sizeof(invalid));
+        assert(interface.setSequoiaArpMode(payload) == kIOReturnUnsupported);
+        payload[4] = 2; invalid = 0; memcpy(payload + 8, &invalid, sizeof(invalid));
+        assert(interface.setSequoiaArpMode(payload) == kIOReturnBadArgument);
+        assert(interface.setSequoiaArpMode(nullptr) == kIOReturnBadArgument);
+        interface.instance = nullptr;
+        assert(interface.setSequoiaArpMode(payload) == kIOReturnNotReady);
+    }
+    std::printf("Native extended-BSS: %u ownership/failure/bounds traces, negotiated rates/MCS/RSN, HE widths, Fastlane refusal and ARP-mode compatibility tests passed; HAL mocked\n", extendedTraces);
     std::printf("Native current-BSS controller: %u actual query/encoder ownership, generation, binary SSID, IE and unaligned-output traces passed; HAL mocked\n", traces);
 }

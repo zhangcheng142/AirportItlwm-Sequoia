@@ -59,9 +59,13 @@ public:
     IOReturn getSequoiaNss(void *);
     IOReturn getSequoiaWclTrafficCounters(void *);
     IOReturn getSequoiaWclChannelsInfo(void *);
+    IOReturn getSequoiaWclHotChannels(void *);
+    IOReturn getSequoiaBeaconInfo(void *);
     uint8_t nativePermanentAddress[6] = {};
     IOReturn getSequoiaBGScanCache(void *);
     size_t encodeWCLScanResult(const struct ieee80211_node *, void *, size_t);
+    IOReturn setSequoiaRoamLock(void *);
+    IOReturn setSequoiaArpMode(void *);
 
     IOReturn getSSID(apple80211_ssid_data *);
     IOReturn getAUTH_TYPE(apple80211_authtype_data *);

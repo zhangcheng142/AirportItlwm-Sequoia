@@ -146,6 +146,13 @@ public:
         uint32_t unsupportedRequests = 0;
         uint32_t lastUnsupportedSelector = UINT32_MAX;
         uint32_t unsupportedSelectors[4] = {UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX};
+        // WCL slot 583 carries one boolean. Intel firmware has no equivalent
+        // roam-lock command, so the native adapter accepts only 0/1 and treats
+        // the request as an advisory no-op. Keep the call/value/result visible
+        // so a connection attempt can be correlated with the WCL preflight.
+        uint32_t roamLockCalls = 0;
+        uint32_t roamLockLastValue = UINT32_MAX;
+        uint32_t roamLockLastResult = UINT32_MAX;
         // Configuration setters that used to be refused and are now accepted.
         // Kept separately from the unsupported record so a boot shows both what
         // is still missing and whether airportd's configuration sequence - the
@@ -163,6 +170,7 @@ public:
         uint32_t wclQueryMaxNss = 0;
         uint32_t wclQueryTrafficCounters = 0;
         uint32_t wclQueryChannelsInfo = 0;
+        uint32_t wclQueryHotChannels = 0;
         // WCL slot-530 cache reads.  A scan result can be delivered to the
         // family and still remain invisible if CoreWLAN cannot read the cache;
         // these counters distinguish that boundary without retaining SSIDs.

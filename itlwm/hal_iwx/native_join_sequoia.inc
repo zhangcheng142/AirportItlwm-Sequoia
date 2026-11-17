@@ -24,7 +24,13 @@ int ItlIwx::iwx_native_join_candidate(const SequoiaWCL::JoinRequestSnapshot &sna
     const auto &candidate = request->candidates[index];
     const uint8_t zero[6] = {};
     if (!ItlScan::validUnicast(candidate.bssid)) return EINVAL;
-    if (candidate.saePKCapable || memcmp(candidate.oweTransitionBssid, zero, 6))
+    // SAE capability can be advertised by a WPA2/WPA3 transition AP.  The
+    // request still has to select WPA2-PSK; SAE-only remains unsupported.
+    const bool selectedWpa2Psk =
+        request->authLower == APPLE80211_AUTHTYPE_OPEN &&
+        request->authUpper == APPLE80211_AUTHTYPE_WPA2_PSK;
+    if ((candidate.saePKCapable && !selectedWpa2Psk) ||
+        memcmp(candidate.oweTransitionBssid, zero, 6))
         return EOPNOTSUPP;
 
     const unsigned channel = candidate.channelSpec & 0xff;

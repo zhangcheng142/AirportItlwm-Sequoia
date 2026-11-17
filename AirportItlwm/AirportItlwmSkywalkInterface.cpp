@@ -588,6 +588,32 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaWclChannelsInfo(void *data)
     return kIOReturnSuccess;
 }
 
+IOReturn AirportItlwmSkywalkInterface::getSequoiaWclHotChannels(void *data)
+{
+    if (!data) return kIOReturnBadArgument;
+    // Broadcom's getWCL_FW_HOT_CHANNELS returns a count at +0x10 followed by
+    // up to seven 16-bit channel specs. Intel has no matching firmware query;
+    // an empty, well-shaped result tells WCL that there are no firmware-hot
+    // channels without exposing stale caller memory as valid entries.
+    const uint32_t count = 0;
+    memcpy(static_cast<uint8_t *>(data) + 0x10, &count, sizeof(count));
+    return kIOReturnSuccess;
+}
+
+IOReturn AirportItlwmSkywalkInterface::getSequoiaBeaconInfo(void *data)
+{
+    if (!data) return kIOReturnBadArgument;
+    // WCLNetManager::setCurrentBSS issues selector 502 with a two-byte output
+    // buffer, despite the lower-level BCM getBEACON_INFO API having a much
+    // larger beacon-frame structure.  The two bytes are the QoS/Fastlane
+    // capability pair copied from the current beacon.  Intel does not expose
+    // Apple's Fastlane/ACM override, so report both capabilities disabled and
+    // let WCL continue to the native association path.
+    const uint8_t output[2] = {0, 0};
+    memcpy(data, output, sizeof(output));
+    return kIOReturnSuccess;
+}
+
 #include <Airport/SequoiaExtendedBss.h>
 
 IOReturn AirportItlwmSkywalkInterface::dispatchSequoiaRequest(UInt slot, void *data)
@@ -617,6 +643,9 @@ IOReturn AirportItlwmSkywalkInterface::dispatchSequoiaRequest(UInt slot, void *d
     if (slot == 625) return setSequoiaFastLane(data);
     if (slot == 530) return getSequoiaBGScanCache(data);
     if (slot == 581) return instance->requestNativeLeave(data);
+    if (slot == 583) return setSequoiaRoamLock(data);
+    if (slot == 589) return setSequoiaArpMode(data);
+    if (slot == 502) return getSequoiaBeaconInfo(data);
     // r227: WCL capability queries. The r226 boot's 117 unsupported requests
     // were these five slots: 495 getMAX_NSS_FOR_AP, 521 getWCL_TRAFFIC_COUNTERS,
     // 524 getWCL_CHANNELS_INFO, 575 setPM_MODE, 585 setWCL_ROAM_PROFILE_CONFIG.
@@ -625,6 +654,10 @@ IOReturn AirportItlwmSkywalkInterface::dispatchSequoiaRequest(UInt slot, void *d
     // itlwm_wcl_queries=off restores the old refusal for A/B.
     const bool wclQueries = instance->nativeWclQueriesEnabled();
     if (wclQueries) {
+        if (slot == 518) {
+            instance->recordWclQuery(518);
+            return getSequoiaWclHotChannels(data);
+        }
         if (slot == 495) {
             instance->recordWclQuery(495);
             return getSequoiaMaxNssForAp(data);
@@ -662,7 +695,9 @@ IOReturn AirportItlwmSkywalkInterface::dispatchSequoiaRequest(UInt slot, void *d
     // r227 adds 575 setPM_MODE and 585 setWCL_ROAM_PROFILE_CONFIG (the last
     // two of the r226 boot's 117 refused selectors); neither changes what
     // this driver puts on air, and both share the itlwm_wcl_queries gate.
-    if (slot == 538 || slot == 543 || slot == 562 || slot == 596 || slot == 604 ||
+    if (slot == 538 || slot == 543 || slot == 562 || slot == 563 || slot == 565 ||
+        slot == 594 ||
+        slot == 596 || slot == 604 || slot == 640 || slot == 652 ||
         slot == 608 ||
         slot == 609 || slot == 610 || slot == 611 || slot == 618 || slot == 630 ||
         (wclQueries && (slot == 575 || slot == 585))) {
@@ -890,6 +925,44 @@ IOReturn AirportItlwmSkywalkInterface::setSequoiaFastLane(void *data)
     d.fastLaneResult = static_cast<uint32_t>(result);
     instance->publishNativeJoinDiagnostics();
     return result;
+}
+
+IOReturn AirportItlwmSkywalkInterface::setSequoiaRoamLock(void *data)
+{
+    if (!instance) return kIOReturnNotReady;
+    if (!data) return kIOReturnBadArgument;
+    // AppleBCMWLANCore::setWCL_SET_ROAM_LOCK reads only byte zero of the
+    // audited payload. Do not accept arbitrary private data or claim that an
+    // Intel firmware roam lock was programmed: the Intel native path has no
+    // matching command. Returning success for the two valid boolean values is
+    // the same compatibility contract as the other bounded WCL setters and
+    // lets WCL continue its association preflight.
+    const uint8_t value = *static_cast<const uint8_t *>(data);
+    auto &d = instance->nativeScan.diagnostics;
+    if (d.roamLockCalls != UINT32_MAX) ++d.roamLockCalls;
+    d.roamLockLastValue = value;
+    const IOReturn result = value <= 1 ? kIOReturnSuccess : kIOReturnBadArgument;
+    d.roamLockLastResult = static_cast<uint32_t>(result);
+    instance->publishNativeScanDiagnostics();
+    return result;
+}
+
+IOReturn AirportItlwmSkywalkInterface::setSequoiaArpMode(void *data)
+{
+    if (!instance) return kIOReturnNotReady;
+    if (!data) return kIOReturnBadArgument;
+    // 24H23 AppleBCMWLANCore::setWCL_ARP_MODE reads a 0/1 mode at +8,
+    // optional keepalive flags at +4/+5, and then programs Broadcom's ARP or
+    // GARP offload. Intel firmware has no audited equivalent. Validate the
+    // producer's mode/boolean fields and acknowledge the configuration while
+    // leaving offload disabled; normal host ARP remains in the data path.
+    const auto *bytes = static_cast<const uint8_t *>(data);
+    uint32_t mode = 0;
+    memcpy(&mode, bytes + 8, sizeof(mode));
+    if (mode > 1) return kIOReturnUnsupported;
+    if (bytes[4] > 1 || bytes[5] > 1) return kIOReturnBadArgument;
+    instance->recordConfigurationSetter(589);
+    return kIOReturnSuccess;
 }
 
 IOReturn AirportItlwmSkywalkInterface::getSequoiaBGScanCache(void *data)

@@ -132,6 +132,15 @@ int main()
     restricted.controls210 = 4;
     assert(snapshot.capture(&restricted, sizeof(restricted)));
     assert(validateJoinControls(snapshot) == JoinPolicyResult::Success);
+    // A transition AP may advertise SAE capability while WCL selected the
+    // WPA2-PSK leg. The capability is an alternative, not a request for SAE.
+    auto transition = restricted;
+    transition.candidates[0].saePKCapable = 1;
+    assert(snapshot.capture(&transition, sizeof(transition)));
+    assert(validateJoinControls(snapshot) == JoinPolicyResult::Success);
+    transition.authUpper = APPLE80211_AUTHTYPE_WPA3_SAE;
+    assert(snapshot.capture(&transition, sizeof(transition)));
+    assert(validateJoinControls(snapshot) == JoinPolicyResult::Unsupported);
     for (unsigned fault = 0; fault < 6; ++fault) {
         auto badAuth = restricted;
         switch (fault) {

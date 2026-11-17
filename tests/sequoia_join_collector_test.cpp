@@ -419,6 +419,9 @@ int main()
     clearCache(); ieee80211_collect_bss(&ic, &beacon, &info, 0);
     puts("Actual BSD/IWM/IWX mixed WPA+RSN admission: accept selected WPA2/CCMP, reject AP/request cipher mismatches; synthetic beacons, no radio I/O");
     assert(!select(request));
+    auto transitionRequest = request;
+    transitionRequest.candidates[0].saePKCapable = 1;
+    assert(select(transitionRequest) == 0);
     assert(driver.nativeCandidateDiagnostic.mask == 0);
     assert(driver.nativeCandidateDiagnostic.ageMs == 0);
     assert(select(request, 1) == EINVAL);
@@ -434,7 +437,8 @@ int main()
             case 4: bad.authUpperExtended = 1; break;
             case 5: bad.candidates[0].bssid[0] = 1; break;
             case 6: bad.candidates[0].bssid[0] = 4; break;
-            case 7: bad.candidates[0].saePKCapable = 1; break;
+            case 7: bad.candidates[0].saePKCapable = 1;
+                bad.authUpper = APPLE80211_AUTHTYPE_WPA3_SAE; break;
             case 8: bad.candidates[0].oweTransitionBssid[0] = 2; break;
             case 9: bad.candidates[0].channelSpec = 0xd001; break;
             case 10: bad.candidates[0].channelSpec = 0x1000; break;

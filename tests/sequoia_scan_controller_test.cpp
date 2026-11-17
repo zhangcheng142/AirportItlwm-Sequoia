@@ -502,6 +502,7 @@ public:
     }
     IOReturn requestNativeScan(void *);
     IOReturn cancelNativeScan();
+    IOReturn cancelAndWaitNativeScan();
     void runNativeScan();
     void publishNativeScanDiagnostics() {}
     void publishNativeJoinDiagnostics() {}
@@ -1252,6 +1253,51 @@ static void joinTests()
         { std::lock_guard<std::mutex> lock(mutex); canRelease = true; changed.notify_all(); }
         closer.join(); assert(d.hal.joins == 0 && d.references == 1);
     }
+    // A background scan may still own the firmware when WCL synchronously
+    // asks to leave. The production path must cancel and drain that scan
+    // instead of returning Busy, then acknowledge its canceled completion so
+    // an immediate next join is admitted.
+    {
+        AirportItlwm d;
+        assert(d.initNativeJoin() && d.initNativeScan());
+        auto scan = request();
+        std::mutex mutex;
+        std::condition_variable changed;
+        bool entered = false;
+        d.hal.onScan = [&] {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                entered = true;
+                changed.notify_all();
+            }
+            d.loop.commandWakeup(&d, false);
+            while (!d.hal.canceled) d.loop.commandSleep(&d.nativeScan, THREAD_UNINT);
+        };
+        assert(d.loop.run([&] { return d.requestNativeScan(&scan); }) == kIOReturnSuccess);
+        std::thread dispatcher([&] {
+            dispatch(d.nativeScanCall);
+            joined(d.nativeScanCall);
+        });
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            assert(changed.wait_for(lock, std::chrono::seconds(5), [&] { return entered; }));
+        }
+        SequoiaWCL::LeaveRequest leave = {};
+        leave.reason = 8;
+        leave.waitMs = 30;
+        assert(d.loop.run([&] { return d.requestNativeLeave(&leave); }) == kIOReturnSuccess);
+        dispatcher.join();
+        assert(!d.nativeScan.workerActive() && !d.nativeScan.delivery.busy());
+        assert(d.hal.canceled && d.hal.scans == 1);
+        assert(d.nativeJoin.diagnostics.leaveScanCanceled == 1 &&
+               d.nativeJoin.diagnostics.leaveScanWaits == 1 &&
+               d.nativeJoin.diagnostics.leaveStage == 12 &&
+               d.nativeJoin.diagnostics.leaveFailures == 0);
+        auto next = joinRequest();
+        assert(d.loop.run([&] { return d.requestNativeJoin(&next); }) == kIOReturnSuccess);
+        d.stop();
+    }
+    puts("Native scan preemption: synchronous leave cancels/drains a background scan and admits the next join");
     // WCL advances synchronously after LEAVE_NETWORK: no timer tick between
     // its return and MAC/candidate admission. Event and hardware failures must
     // retain the old owner until teardown can safely finish.

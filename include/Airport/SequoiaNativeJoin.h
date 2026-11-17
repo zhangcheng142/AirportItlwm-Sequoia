@@ -39,6 +39,22 @@ static_assert(offsetof(LeaveRequest, bssid) == 19, "24G830 leave peer");
 // All fields are owned by the controller's shared workqueue. The external
 // worker owns hardware until it has returned, even after a firmware reset.
 struct NativeJoin {
+    // Retained across later automatic reconnects.  The live attempt fields
+    // below are intentionally reset for every request, while this snapshot
+    // keeps the last failed request observable without retaining SSID,
+    // BSSID, frame, nonce, MIC or key material.
+    struct FailureSnapshot {
+        uint32_t request = 0;
+        uint32_t error = UINT32_MAX, startResult = UINT32_MAX;
+        uint32_t authEvents = 0, assocEvents = 0;
+        uint32_t authStatus = UINT32_MAX, assocStatus = UINT32_MAX;
+        uint32_t stateError = UINT32_MAX, finalError = UINT32_MAX;
+        uint32_t associationPosted = 0, completionPosted = 0;
+        uint32_t completionStatus = UINT32_MAX, completionPostResult = UINT32_MAX;
+        JoinCandidateDiagnostic candidate;
+        ItlEapol::Snapshot handshake;
+    } lastFailure;
+
     struct Diagnostics {
         uint32_t requests = 0;
         uint32_t lastRequestResult = UINT32_MAX;
@@ -69,6 +85,7 @@ struct NativeJoin {
         uint32_t leaveFailures = 0, leaveLastFailure = UINT32_MAX;
         uint32_t leaveLastFailureStage = 0, leaveLastFailureRequest = 0;
         uint32_t leaveWasBusy = 0, leaveDrained = 0, leaveBusyAfter = 0;
+        uint32_t leaveScanCanceled = 0, leaveScanWaits = 0;
         uint32_t leaveTxError = 0;
     } diagnostics;
     JoinRequestSnapshot request;
@@ -84,6 +101,27 @@ struct NativeJoin {
     bool leaveRequested = false, leaveWaiting = false, leaveAttempted = false;
     int leaveError = 0;
     bool associationReady = false, associationPosted = false, completionPosted = false;
+
+    void rememberFailure()
+    {
+        auto &out = lastFailure;
+        const auto &in = diagnostics;
+        out.request = in.requests;
+        out.error = static_cast<uint32_t>(error);
+        out.startResult = in.startResult;
+        out.authEvents = in.authEvents;
+        out.assocEvents = in.assocEvents;
+        out.authStatus = in.authStatus;
+        out.assocStatus = in.assocStatus;
+        out.stateError = in.stateError;
+        out.finalError = in.finalError;
+        out.associationPosted = in.associationPosted;
+        out.completionPosted = in.completionPosted;
+        out.completionStatus = in.completionStatus;
+        out.completionPostResult = in.completionPostResult;
+        out.candidate = in.candidate;
+        out.handshake = in.handshake;
+    }
 
     void reset()
     {

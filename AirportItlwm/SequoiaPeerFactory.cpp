@@ -102,7 +102,7 @@ bool itlwmRebuildInterfaceGlue(void *interface, void **installed)
     return true;
 }
 
-// 24H23 WCLBulletinBoard::initWithOptions reads its base vtable global
+// 24H232 WCLBulletinBoard::initWithOptions reads its base vtable global
 // at 0xffffff800211fe2f + 7 + 0x29c2da, then calls *0x98(%rax).
 // -- the base class's init, reached through a global vtable-pointer slot at link
 // address 0xffffff80023bc110. r215 proved that call returns false both before and
@@ -113,8 +113,8 @@ void itlwmReadWclBulletinBoardBaseInit(uint64_t *table, uint64_t *slot98)
 {
     if (table) *table = 0;
     if (slot98) *slot98 = 0;
-    const uintptr_t anchorLink = 0xffffff8002129bc4ULL;  // 24H23 IO80211Glue::withOptions
-    const uintptr_t globalLink = 0xffffff80023bc110ULL;  // base vtable pointer slot
+    const uintptr_t anchorLink = 0xffffff800212b2d4ULL;  // 24H232 IO80211Glue::withOptions
+    const uintptr_t globalLink = 0xffffff80023be110ULL;  // base vtable pointer slot
     const int64_t slide = static_cast<int64_t>(
         reinterpret_cast<uintptr_t>(&io80211GlueWithInterface)) - static_cast<int64_t>(anchorLink);
     void *tbl = *reinterpret_cast<void **>(static_cast<uintptr_t>(globalLink) + slide);

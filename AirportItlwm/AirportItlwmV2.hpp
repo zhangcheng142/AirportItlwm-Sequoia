@@ -366,6 +366,7 @@ public:
     void stopNativeScan();
     IOReturn requestNativeScan(void *);
     IOReturn cancelNativeScan();
+    IOReturn cancelAndWaitNativeScan();
     void runNativeScan();
     void publishNativeScanDiagnostics();
     // Records what the apple80211 dispatcher was asked for when it could not

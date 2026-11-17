@@ -6,8 +6,8 @@
 
 namespace SequoiaTrial {
 static const char kKernelVersion[] =
-    "Darwin Kernel Version 24.6.0: Sun Aug 23 20:30:56 PDT 2026; "
-    "root:xnu-11417.140.69.712.69~1/RELEASE_X86_64";
+    "Darwin Kernel Version 24.6.0: Sun Oct 11 23:36:58 PDT 2026; "
+    "root:xnu-11417.140.69.713.47~2/RELEASE_X86_64";
 
 inline bool allowed(int mode, int major, int minor, const char *kernelVersion,
                     uint16_t vendor, uint16_t device)

@@ -68,6 +68,7 @@ void AirportItlwm::recordWclQuery(uint32_t selector)
         case 495: if (d.wclQueryMaxNss != UINT32_MAX) ++d.wclQueryMaxNss; break;
         case 521: if (d.wclQueryTrafficCounters != UINT32_MAX) ++d.wclQueryTrafficCounters; break;
         case 524: if (d.wclQueryChannelsInfo != UINT32_MAX) ++d.wclQueryChannelsInfo; break;
+        case 518: if (d.wclQueryHotChannels != UINT32_MAX) ++d.wclQueryHotChannels; break;
         default: return;
     }
     publishNativeScanDiagnostics();
@@ -319,6 +320,28 @@ IOReturn AirportItlwm::cancelNativeScan()
     auto *hal = fHalService ? fHalService->getNativeHal() : nullptr;
     if (hal) hal->cancelNativeScan();
     return kIOReturnSuccess;
+}
+
+// A WCL join/leave request has synchronous semantics.  A background scan is
+// preemptible, but returning Busy while it is still in flight leaves Apple's
+// network FSM with a failed transition when the user toggles Wi-Fi quickly.
+// Cancel the scan through the audited HAL path and wait for the worker's real
+// stop barrier before admitting the next radio operation.  Once the worker is
+// stopped, run the same timer delivery path once so a canceled scan's failure
+// completion is acknowledged before a new join can be admitted.  We never
+// force-clear its delivery state or treat cancellation as a successful scan.
+IOReturn AirportItlwm::cancelAndWaitNativeScan()
+{
+    if (!_fWorkloop || !_fWorkloop->inGate()) return kIOReturnCannotLock;
+    if (!nativeScan.workerActive()) return kIOReturnSuccess;
+    const auto canceled = cancelNativeScan();
+    if (canceled != kIOReturnSuccess) return canceled;
+    while (nativeScan.workerActive() && nativeAvailable())
+        _fCommandGate->commandSleep(&nativeScan, THREAD_UNINT);
+    if (!nativeAvailable()) return kIOReturnNotReady;
+    if (nativeScan.delivery.busy() && nativeScanTimer)
+        nativeScanTimerAction(this, nativeScanTimer);
+    return nativeScan.delivery.busy() ? kIOReturnBusy : kIOReturnSuccess;
 }
 
 void AirportItlwm::nativeScanWorker(thread_call_param_t owner, thread_call_param_t)

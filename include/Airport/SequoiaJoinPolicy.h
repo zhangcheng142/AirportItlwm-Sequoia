@@ -2,6 +2,7 @@
 #define AIRPORT_ITLWM_SEQUOIA_JOIN_POLICY_H
 
 #include <Airport/SequoiaJoinRequest.h>
+#include <Airport/apple80211_var.h>
 
 namespace SequoiaWCL {
 
@@ -44,7 +45,15 @@ inline JoinPolicyResult validateJoinControls(const JoinRequestSnapshot &snapshot
     uint8_t any = 0;
     for (auto byte : candidate.bssid) any |= byte;
     if (!any || (candidate.bssid[0] & 1)) return JoinPolicyResult::BadArgument;
-    if (candidate.saePKCapable || memcmp(candidate.oweTransitionBssid, zero, sizeof(zero)))
+    // WCL marks a transition-mode AP as SAE-capable even when the selected
+    // request is explicitly WPA2-PSK.  That flag describes an advertised
+    // alternative, not the AKM chosen for this join.  Keep SAE-only and OWE
+    // requests out of this WPA2-only path while allowing the usable PSK leg.
+    const bool selectedWpa2Psk =
+        request->authLower == APPLE80211_AUTHTYPE_OPEN &&
+        request->authUpper == APPLE80211_AUTHTYPE_WPA2_PSK;
+    if ((candidate.saePKCapable && !selectedWpa2Psk) ||
+        memcmp(candidate.oweTransitionBssid, zero, sizeof(zero)))
         return JoinPolicyResult::Unsupported;
     if (memcmp(request->key.address, zero, sizeof(zero)) &&
         memcmp(request->key.address, candidate.bssid, sizeof(zero))) return JoinPolicyResult::BadArgument;

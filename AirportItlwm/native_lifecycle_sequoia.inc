@@ -329,6 +329,9 @@ void AirportItlwm::publishNativeScanDiagnostics()
     provider->setProperty("ItlwmNativeScanUnsupportedSelector1", d.unsupportedSelectors[1], 32);
     provider->setProperty("ItlwmNativeScanUnsupportedSelector2", d.unsupportedSelectors[2], 32);
     provider->setProperty("ItlwmNativeScanUnsupportedSelector3", d.unsupportedSelectors[3], 32);
+    provider->setProperty("ItlwmNativeScanRoamLockCalls", d.roamLockCalls, 32);
+    provider->setProperty("ItlwmNativeScanRoamLockLastValue", d.roamLockLastValue, 32);
+    provider->setProperty("ItlwmNativeScanRoamLockLastResult", d.roamLockLastResult, 32);
     provider->setProperty("ItlwmNativeScanConfigurationSetters", d.configurationSetters, 32);
     provider->setProperty("ItlwmNativeScanLastConfigurationSetter", d.lastConfigurationSetter, 32);
     provider->setProperty("ItlwmNativeScanCacheRequests", d.cacheRequests, 32);
@@ -453,6 +456,7 @@ void AirportItlwm::publishNativeScanDiagnostics()
     provider->setProperty("ItlwmNativeWclQueryMaxNss", d.wclQueryMaxNss, 32);
     provider->setProperty("ItlwmNativeWclQueryTrafficCounters", d.wclQueryTrafficCounters, 32);
     provider->setProperty("ItlwmNativeWclQueryChannelsInfo", d.wclQueryChannelsInfo, 32);
+    provider->setProperty("ItlwmNativeWclQueryHotChannels", d.wclQueryHotChannels, 32);
 }
 
 void AirportItlwm::captureNativeJoinDiagnostics(bool reset)
@@ -480,7 +484,36 @@ void AirportItlwm::publishNativeJoinDiagnostics()
     provider->setProperty("ItlwmNativeJoinLeaveWasBusy", d.leaveWasBusy, 32);
     provider->setProperty("ItlwmNativeJoinLeaveDrained", d.leaveDrained, 32);
     provider->setProperty("ItlwmNativeJoinLeaveBusyAfter", d.leaveBusyAfter, 32);
+    provider->setProperty("ItlwmNativeJoinLeaveScanCanceled", d.leaveScanCanceled, 32);
+    provider->setProperty("ItlwmNativeJoinLeaveScanWaits", d.leaveScanWaits, 32);
     provider->setProperty("ItlwmNativeJoinLeaveTxError", d.leaveTxError, 32);
+    // Retained failure snapshot: unlike the live fields above, these values
+    // survive an automatic reconnect and identify the stage that failed.
+    const auto &failure = nativeJoin.lastFailure;
+    provider->setProperty("ItlwmNativeLastJoinFailureRequest", failure.request, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureError", failure.error, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureStartResult", failure.startResult, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureAuthEvents", failure.authEvents, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureAssocEvents", failure.assocEvents, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureAuthStatus", failure.authStatus, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureAssocStatus", failure.assocStatus, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureStateError", failure.stateError, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureFinalError", failure.finalError, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureAssociationPosted", failure.associationPosted, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureCompletionPosted", failure.completionPosted, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureCompletionStatus", failure.completionStatus, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureCompletionPostResult", failure.completionPostResult, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureCandidateMask", failure.candidate.mask, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureCandidateStage", failure.candidate.stage, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureCandidateNodes", failure.candidate.nodes, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureCandidateChannel", failure.candidate.channel, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureCandidateAgeMs", failure.candidate.ageMs, 64);
+    provider->setProperty("ItlwmNativeLastJoinFailureEapolRx", failure.handshake.eapol.rx, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureEapolM1", failure.handshake.eapol.rxM1, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureEapolM3", failure.handshake.eapol.rxM3, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureEapolM3Stage", failure.handshake.eapol.m3Stage, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailureEapolDeauthReason", failure.handshake.eapol.deauthReason, 32);
+    provider->setProperty("ItlwmNativeLastJoinFailurePortValid", failure.handshake.port, 32);
     provider->setProperty("ItlwmNativeJoinLastRequestResult", d.lastRequestResult, 32);
     provider->setProperty("ItlwmNativeJoinPolicyResult", d.policyResult, 32);
     provider->setProperty("ItlwmNativeJoinPolicyMask", d.policyMask, 32);

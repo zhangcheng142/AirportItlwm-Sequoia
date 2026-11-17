@@ -26,7 +26,18 @@ IOReturn AirportItlwm::requestNativeJoin(void *data)
         nativeJoin.diagnostics.rejectStage = RejectRadio;
         return finish(kIOReturnNotReady);
     }
-    if (nativeJoin.busy || nativeScan.workerActive() || nativeScan.delivery.busy()) {
+    if (nativeJoin.busy) {
+        nativeJoin.diagnostics.rejectStage = RejectBusy;
+        return finish(kIOReturnBusy);
+    }
+    if (nativeScan.workerActive()) {
+        const auto scan = cancelAndWaitNativeScan();
+        if (scan != kIOReturnSuccess) {
+            nativeJoin.diagnostics.rejectStage = RejectBusy;
+            return finish(scan);
+        }
+    }
+    if (nativeScan.delivery.busy()) {
         nativeJoin.diagnostics.rejectStage = RejectBusy;
         return finish(kIOReturnBusy);
     }
@@ -153,7 +164,13 @@ IOReturn AirportItlwm::requestNativeLeave(void *data)
     if (!request.reason || request.reason > UINT16_MAX || request.deauthenticate > 1 ||
         request.notificationFlag > 1 || request.notificationSecurity > 1) return finish(kIOReturnBadArgument, 3);
     if (request.enhancedReason || request.waitMs > 1000) return finish(kIOReturnUnsupported, 4);
-    if (nativeRadioTransition || nativeScan.workerActive() || nativeJoin.leaveWaiting) return finish(kIOReturnBusy, 5);
+    if (nativeRadioTransition || nativeJoin.leaveWaiting) return finish(kIOReturnBusy, 5);
+    if (nativeScan.workerActive()) {
+        d.leaveScanCanceled = 1;
+        const auto scan = cancelAndWaitNativeScan();
+        if (scan != kIOReturnSuccess) return finish(scan, 5);
+        if (d.leaveScanWaits != UINT32_MAX) ++d.leaveScanWaits;
+    }
     const uint8_t zero[6] = {};
     if (memcmp(request.bssid, zero, 6) && nativeJoin.busy &&
         memcmp(request.bssid, nativeJoin.completion.candidates[0].bssid, 6))
@@ -332,6 +349,9 @@ void AirportItlwm::runNativeJoin()
         nativeJoin.diagnostics.drained = nativeJoin.drained ? 1 : 0;
         if (!nativeJoin.drained) nativeJoin.error = EIO;
         nativeJoin.diagnostics.finalError = static_cast<uint32_t>(nativeJoin.error);
+        // Keep the failed attempt before reset/automatic reconnect can replace
+        // the live diagnostics with a later successful join.
+        nativeJoin.rememberFailure();
         setProperty("SequoiaNativeJoinError", static_cast<uint64_t>(nativeJoin.error), 32);
     }
     nativeJoin.diagnostics.connected = nativeJoin.connected ? 1 : 0;
